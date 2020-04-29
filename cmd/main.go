@@ -1,9 +1,9 @@
 package main
 
 import (
-    "github.com/vyzigold/lokean/internal/pkg/reciever"
-    "github.com/vyzigold/lokean/internal/pkg/sender"
-    "github.com/vyzigold/lokean/internal/pkg/logs"
+    "github.com/vyzigold/lokean/pkg/reciever"
+    "github.com/vyzigold/lokean/pkg/sender"
+    "github.com/vyzigold/lokean/pkg/logs"
 
     "github.com/infrawatch/apputils/connector"
     "github.com/infrawatch/apputils/logging"

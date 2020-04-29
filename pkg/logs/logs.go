@@ -1,8 +1,8 @@
 package logs
 
 import (
-    "github.com/vyzigold/lokean/internal/reciever"
-    "github.com/vyzigold/lokean/internal/sender"
+    "github.com/vyzigold/lokean/pkg/reciever"
+    "github.com/vyzigold/lokean/pkg/sender"
 )
 
 func Run(reciever Reciever, sender Sender) {
