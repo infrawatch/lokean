@@ -92,7 +92,7 @@ func main() {
 
     tempLogger, err := logging.NewLogger(logging.ERROR, "/dev/stderr")
     if err != nil {
-        fmt.Println("Failed to open tempLogger: %s", err.Error())
+        fmt.Printf("Failed to open tempLogger: %s\n", err.Error())
         os.Exit(1)
     }
 
