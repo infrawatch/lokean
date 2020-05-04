@@ -5,7 +5,6 @@ import (
 )
 
 type Sender interface {
-    Start()
     // I'm not sure how are logs stored in other applications
     // (other than loki), so I left a map[string]string there
     // for assigning key=value labels like in loki
