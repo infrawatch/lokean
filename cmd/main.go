@@ -60,7 +60,6 @@ func getConfigMetadata() map[string][]config.Parameter {
 		},
 		"amqp1": []config.Parameter{
 			config.Parameter{"url", "localhost:5672/lokean/logs", []config.Validator{}},
-			config.Parameter{"debug", "true", []config.Validator{config.BoolValidatorFactory()}},
 			config.Parameter{"messageCount", "1", []config.Validator{config.IntValidatorFactory()}},
 			config.Parameter{"prefetch", "0", []config.Validator{config.IntValidatorFactory()}},
 			config.Parameter{"name", "logs", []config.Validator{}},
@@ -165,7 +164,6 @@ func main() {
 	// NOTE: the cyclic dependency solution should end around here
 
 	amqpURL := conf.Sections["amqp1"].Options["url"].GetString()
-	amqpDebug := conf.Sections["amqp1"].Options["debug"].GetBool()
 	amqpMsgcount := conf.Sections["amqp1"].Options["messageCount"].GetInt()
 	amqpPrefetch := conf.Sections["amqp1"].Options["prefetch"].GetInt()
 	amqpName := conf.Sections["amqp1"].Options["name"].GetString()
@@ -180,10 +178,10 @@ func main() {
 
 	amqpClient := connector.NewAMQPServer(
 		amqpURL,
-		amqpDebug,
 		amqpMsgcount,
 		amqpPrefetch,
-		amqpName)
+		amqpName,
+		logger)
 
 	lokiClient, err := connector.NewLokiConnector(
 		lokiURL,
