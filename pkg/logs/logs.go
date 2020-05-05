@@ -31,6 +31,9 @@ func Run(reciever reciever.Reciever, sender sender.Sender, logger *logging.Logge
 				return
 			case recieverStatus := <-reciever.GetStatus():
 				if recieverStatus != 1 {
+					logger.Metadata(map[string]interface{}{
+						"recieverStatus": recieverStatus,
+					})
 					logger.Error("Recieved a bad reciever status, shutting down")
 					break
 				}
@@ -40,6 +43,9 @@ func Run(reciever reciever.Reciever, sender sender.Sender, logger *logging.Logge
 				var log Log
 				err := json.Unmarshal([]byte(rawMessage), &log)
 				if err != nil {
+					logger.Metadata(map[string]interface{}{
+						"error": err,
+					})
 					logger.Error("Wrong log format recieved")
 					continue
 				}
@@ -48,7 +54,6 @@ func Run(reciever reciever.Reciever, sender sender.Sender, logger *logging.Logge
 				labels["source"] = log.Source
 				sender.SendLog(labels, log.LogMessage, time.Duration(log.Timestamp) * time.Millisecond)
 				logger.Debug("Log message successfuly sent")
-
 			}
 		}
 	}()

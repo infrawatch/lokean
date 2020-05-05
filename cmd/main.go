@@ -27,7 +27,10 @@ func spawnSignalHandler(finish chan bool, logger *logging.Logger, watchedSignals
 	signal.Notify(interruptChannel, watchedSignals...)
 	go func() {
 	signalLoop:
-		for range interruptChannel {
+		for sig := range interruptChannel {
+			logger.Metadata(map[string]interface{}{
+				"signal": sig,
+			})
 			logger.Error("Stopping execution on caught signal")
 			close(finish)
 			break signalLoop
@@ -99,15 +102,20 @@ func main() {
 	metadata := getConfigMetadata()
 	tempConf, err := config.NewConfig(metadata, tempLogger)
 	if err != nil {
-		tempLogger.Error("Failed to open config file")
-		tempLogger.Error(err.Error())
+		tempLogger.Metadata(map[string]interface{}{
+			"error": err,
+		})
+		tempLogger.Error("Failed to initialize config reader")
 		os.Exit(1)
 	}
 
 	err = tempConf.Parse(*fConfigLocation)
 	if err != nil {
+		tempLogger.Metadata(map[string]interface{}{
+			"error": err,
+			"file": *fConfigLocation,
+		})
 		tempLogger.Error("Failed to parse the config file")
-		tempLogger.Error(err.Error())
 		os.Exit(1)
 	}
 
@@ -115,15 +123,21 @@ func main() {
 	logLevelString := tempConf.Sections["default"].Options["logLevel"].GetString()
 	logLevel, err := parseLogLevel(logLevelString)
 	if err != nil {
+		tempLogger.Metadata(map[string]interface{}{
+			"error": err,
+			"logLevel": logLevelString,
+		})
 		tempLogger.Error("Failed to parse log level from config file")
-		tempLogger.Error(err.Error())
 		os.Exit(1)
 	}
 
 	logger, err := logging.NewLogger(logLevel, logFile)
 	if err != nil {
+		tempLogger.Metadata(map[string]interface{}{
+			"error": err,
+			"logFile": logFile,
+		})
 		tempLogger.Error("Failed to open log file")
-		tempLogger.Error(err.Error())
 		os.Exit(1)
 	}
 	defer logger.Destroy()
@@ -132,15 +146,20 @@ func main() {
 
 	conf, err := config.NewConfig(metadata, logger)
 	if err != nil {
-		logger.Error("Failed to open config file")
-		logger.Error(err.Error())
+		logger.Metadata(map[string]interface{}{
+			"error": err,
+		})
+		logger.Error("Failed to initialize config reader")
 		os.Exit(1)
 	}
 
 	err = conf.Parse(*fConfigLocation)
 	if err != nil {
+		logger.Metadata(map[string]interface{}{
+			"error": err,
+			"file": *fConfigLocation,
+		})
 		logger.Error("Failed to parse the config file")
-		logger.Error(err.Error())
 		os.Exit(1)
 	}
 	// NOTE: the cyclic dependency solution should end around here
@@ -172,8 +191,11 @@ func main() {
 		time.Duration(lokiMaxWait) * time.Millisecond)
 
 	if err != nil {
+		logger.Metadata(map[string]interface{}{
+			"error": err,
+			"url": lokiURL,
+		})
 		logger.Error("Couldn't create a loki client.")
-		logger.Error(err.Error())
 		os.Exit(1)
 	}
 
