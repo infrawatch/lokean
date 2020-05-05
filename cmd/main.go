@@ -83,66 +83,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	// TODO: solve this cyclic dependency better than this
-	// apputils/logging needs values from config file
-	// apputils/config needs apputils/logging
-
-	// maybe add SetLevel() and SetFile() to apputils/logging,
-	// create new logger with logging.ERROR and "/dev/stderr",
-	// read these values from config file and then use the
-	// SetLevel() and SetFile() to set them properly
-
-	tempLogger, err := logging.NewLogger(logging.ERROR, "/dev/stderr")
+	// init logger with temporary values until the correct ones
+	// can be read from config
+	logger, err := logging.NewLogger(logging.ERROR, "/dev/stderr")
 	if err != nil {
 		fmt.Printf("Failed to open tempLogger: %s\n", err.Error())
 		os.Exit(1)
 	}
+	defer logger.Destroy()
 
 	metadata := getConfigMetadata()
-	tempConf, err := config.NewConfig(metadata, tempLogger)
-	if err != nil {
-		tempLogger.Metadata(map[string]interface{}{
-			"error": err,
-		})
-		tempLogger.Error("Failed to initialize config reader")
-		os.Exit(1)
-	}
-
-	err = tempConf.Parse(*fConfigLocation)
-	if err != nil {
-		tempLogger.Metadata(map[string]interface{}{
-			"error": err,
-			"file": *fConfigLocation,
-		})
-		tempLogger.Error("Failed to parse the config file")
-		os.Exit(1)
-	}
-
-	logFile := tempConf.Sections["default"].Options["logFile"].GetString()
-	logLevelString := tempConf.Sections["default"].Options["logLevel"].GetString()
-	logLevel, err := parseLogLevel(logLevelString)
-	if err != nil {
-		tempLogger.Metadata(map[string]interface{}{
-			"error": err,
-			"logLevel": logLevelString,
-		})
-		tempLogger.Error("Failed to parse log level from config file")
-		os.Exit(1)
-	}
-
-	logger, err := logging.NewLogger(logLevel, logFile)
-	if err != nil {
-		tempLogger.Metadata(map[string]interface{}{
-			"error": err,
-			"logFile": logFile,
-		})
-		tempLogger.Error("Failed to open log file")
-		os.Exit(1)
-	}
-	defer logger.Destroy()
-	tempLogger.Destroy()
-
-
 	conf, err := config.NewConfig(metadata, logger)
 	if err != nil {
 		logger.Metadata(map[string]interface{}{
@@ -161,7 +111,28 @@ func main() {
 		logger.Error("Failed to parse the config file")
 		os.Exit(1)
 	}
-	// NOTE: the cyclic dependency solution should end around here
+
+	logFile := conf.Sections["default"].Options["logFile"].GetString()
+	logLevelString := conf.Sections["default"].Options["logLevel"].GetString()
+	logLevel, err := parseLogLevel(logLevelString)
+	if err != nil {
+		logger.Metadata(map[string]interface{}{
+			"error": err,
+			"logLevel": logLevelString,
+		})
+		logger.Error("Failed to parse log level from config file")
+		os.Exit(1)
+	}
+	logger.SetLogLevel(logLevel)
+	err = logger.SetFile(logFile, 0666)
+	if err != nil {
+		logger.Metadata(map[string]interface{}{
+			"error": err,
+			"logFile": logFile,
+		})
+		logger.Error("Failed to set proper log ifle")
+		os.Exit(1)
+	}
 
 	amqpURL := conf.Sections["amqp1"].Options["url"].GetString()
 	amqpMsgcount := conf.Sections["amqp1"].Options["messageCount"].GetInt()
