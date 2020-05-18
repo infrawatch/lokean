@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"sync"
 	"time"
+	"fmt"
 )
 
 type Log struct {
@@ -50,9 +51,9 @@ func Run(reciever reciever.Reciever, sender sender.Sender, logger *logging.Logge
 					continue
 				}
 				labels := make(map[string]string)
-				labels["level"] = log.Level
 				labels["source"] = log.Source
-				sender.SendLog(labels, log.LogMessage, time.Duration(log.Timestamp) * time.Millisecond)
+				logMessage := fmt.Sprintf("[%s] %s", log.Level, log.LogMessage)
+				sender.SendLog(labels, logMessage, time.Duration(log.Timestamp) * time.Millisecond)
 				logger.Debug("Log message successfuly sent")
 			}
 		}
