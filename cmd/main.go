@@ -1,7 +1,6 @@
 package main
 
 import (
-	"time"
 	"os"
 	"fmt"
 	"flag"
@@ -55,19 +54,19 @@ func parseLogLevel(s string) (logging.LogLevel, error) {
 func getConfigMetadata() map[string][]config.Parameter {
 	elements := map[string][]config.Parameter{
 		"default": []config.Parameter{
-			config.Parameter{"logFile", "/dev/stderr", []config.Validator{}},
-			config.Parameter{"logLevel", "INFO", []config.Validator{config.OptionsValidatorFactory([]string{"DEBUG", "INFO", "WARNING", "ERROR"})}},
+			config.Parameter{Name: "logFile", Tag: "", Default: "/dev/stderr", Validators: []config.Validator{}},
+			config.Parameter{Name: "logLevel", Tag: "", Default: "INFO", Validators: []config.Validator{config.StringOptionsValidatorFactory([]string{"DEBUG", "INFO", "WARNING", "ERROR"})}},
 		},
 		"amqp1": []config.Parameter{
-			config.Parameter{"url", "localhost:5672/lokean/logs", []config.Validator{}},
-			config.Parameter{"messageCount", "1", []config.Validator{config.IntValidatorFactory()}},
-			config.Parameter{"prefetch", "0", []config.Validator{config.IntValidatorFactory()}},
-			config.Parameter{"name", "logs", []config.Validator{}},
+			config.Parameter{Name: "connection", Tag: "", Default: "amqp://localhost:5672/lokean/logs", Validators: []config.Validator{}},
+			config.Parameter{Name: "send_timeout", Tag: "", Default: 2, Validators: []config.Validator{config.IntValidatorFactory()}},
+			config.Parameter{Name: "client_name", Tag: "", Default: "test", Validators: []config.Validator{}},
+			config.Parameter{Name: "listen_channels", Tag: "", Default: "lokean/logs", Validators: []config.Validator{}},
 		},
 		"loki": []config.Parameter{
-			config.Parameter{"url", "localhost:5672/lokean/logs", []config.Validator{}},
-			config.Parameter{"batchSize", "2", []config.Validator{config.IntValidatorFactory()}},
-			config.Parameter{"maxWaitTime", "100", []config.Validator{config.IntValidatorFactory()}},
+			config.Parameter{Name: "connection", Tag: "", Default: "http://localhost:3100", Validators: []config.Validator{}},
+			config.Parameter{Name: "batch_size", Tag: "", Default: 20, Validators: []config.Validator{config.IntValidatorFactory()}},
+			config.Parameter{Name: "max_wait_time", Tag: "", Default: 100, Validators: []config.Validator{config.IntValidatorFactory()}},
 		},
 	}
 	return elements
@@ -93,14 +92,7 @@ func main() {
 	defer logger.Destroy()
 
 	metadata := getConfigMetadata()
-	conf, err := config.NewConfig(metadata, logger)
-	if err != nil {
-		logger.Metadata(map[string]interface{}{
-			"error": err,
-		})
-		logger.Error("Failed to initialize config reader")
-		os.Exit(1)
-	}
+	conf := config.NewINIConfig(metadata, logger)
 
 	err = conf.Parse(*fConfigLocation)
 	if err != nil {
@@ -134,44 +126,55 @@ func main() {
 		os.Exit(1)
 	}
 
-	amqpURL := conf.Sections["amqp1"].Options["url"].GetString()
-	amqpMsgcount := conf.Sections["amqp1"].Options["messageCount"].GetInt()
-	amqpPrefetch := conf.Sections["amqp1"].Options["prefetch"].GetInt()
-	amqpName := conf.Sections["amqp1"].Options["name"].GetString()
-
-	lokiURL := conf.Sections["loki"].Options["url"].GetString()
-	lokiBatchSize := conf.Sections["loki"].Options["batchSize"].GetInt()
-	lokiMaxWait := conf.Sections["loki"].Options["maxWaitTime"].GetInt()
-
 	finish := make(chan bool)
 	var wait sync.WaitGroup
 	spawnSignalHandler(finish, logger, os.Interrupt)
 
-	amqpClient := connector.NewAMQPServer(
-		amqpURL,
-		amqpMsgcount,
-		amqpPrefetch,
-		amqpName,
-		logger)
-
-	lokiClient, err := connector.NewLokiConnector(
-		lokiURL,
-		lokiBatchSize,
-		time.Duration(lokiMaxWait) * time.Millisecond)
-
+	amqp, err := connector.NewAMQP10Connector(conf, logger)
 	if err != nil {
 		logger.Metadata(map[string]interface{}{
 			"error": err,
-			"url": lokiURL,
 		})
-		logger.Error("Couldn't create a loki client.")
-		os.Exit(1)
+		logger.Error("Couldn't connect to AMQP")
+		return
 	}
+	err = amqp.Connect()
+	if err != nil {
+		logger.Metadata(map[string]interface{}{
+			"error": err,
+		})
+		logger.Error("Error while connecting to AMQP")
+		return
+	}
+	amqp.CreateReceiver("lokean/logs", -1)
+	amqpReceiver := make(chan interface{})
+	amqpSender := make(chan interface{})
+	amqp.Start(amqpReceiver, amqpSender)
 
-	lokiClient.Start()
-	defer lokiClient.Shutdown()
+	loki, err := connector.NewLokiConnector(conf, logger)
+	if err != nil {
+		logger.Metadata(map[string]interface{}{
+			"error": err,
+		})
+		logger.Error("Couldn't connect to Loki")
+		return
+	}
+	err = loki.Connect()
+	if err != nil {
+		logger.Metadata(map[string]interface{}{
+			"error": err,
+		})
+		logger.Error("Couldn't connect to Loki")
+		return
+	}
+	lokiReceiver := make(chan interface{})
+	lokiSender := make(chan interface{})
+	loki.Start(lokiReceiver, lokiSender)
 
-	logs.Run(amqpClient, lokiClient, logger, finish, &wait)
+	defer loki.Disconnect()
+	defer amqp.Disconnect()
+
+	logs.Run(amqpReceiver, lokiSender, logger, finish, &wait)
 
 	wait.Wait()
 }
