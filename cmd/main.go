@@ -7,7 +7,7 @@ import (
 	"os/signal"
 	"sync"
 
-	"github.com/vyzigold/lokean/pkg/logs"
+	"github.com/infrawatch/lokean/pkg/logs"
 
 	"github.com/infrawatch/apputils/connector"
 	"github.com/infrawatch/apputils/logging"
