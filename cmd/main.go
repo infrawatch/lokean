@@ -1,17 +1,17 @@
 package main
 
 import (
-	"os"
-	"fmt"
 	"flag"
+	"fmt"
+	"os"
 	"os/signal"
 	"sync"
 
 	"github.com/infrawatch/lokean/pkg/logs"
 
+	"github.com/infrawatch/apputils/config"
 	"github.com/infrawatch/apputils/connector"
 	"github.com/infrawatch/apputils/logging"
-	"github.com/infrawatch/apputils/config"
 )
 
 func printUsage() {
@@ -98,7 +98,7 @@ func main() {
 	if err != nil {
 		logger.Metadata(map[string]interface{}{
 			"error": err,
-			"file": *fConfigLocation,
+			"file":  *fConfigLocation,
 		})
 		logger.Error("Failed to parse the config file")
 		os.Exit(1)
@@ -109,7 +109,7 @@ func main() {
 	logLevel, err := parseLogLevel(logLevelString)
 	if err != nil {
 		logger.Metadata(map[string]interface{}{
-			"error": err,
+			"error":    err,
 			"logLevel": logLevelString,
 		})
 		logger.Error("Failed to parse log level from config file")
@@ -119,10 +119,10 @@ func main() {
 	err = logger.SetFile(logFile, 0666)
 	if err != nil {
 		logger.Metadata(map[string]interface{}{
-			"error": err,
+			"error":   err,
 			"logFile": logFile,
 		})
-		logger.Error("Failed to set proper log ifle")
+		logger.Error("Failed to set proper log file")
 		os.Exit(1)
 	}
 
@@ -136,17 +136,9 @@ func main() {
 			"error": err,
 		})
 		logger.Error("Couldn't connect to AMQP")
-		return
+		os.Exit(1)
 	}
-	err = amqp.Connect()
-	if err != nil {
-		logger.Metadata(map[string]interface{}{
-			"error": err,
-		})
-		logger.Error("Error while connecting to AMQP")
-		return
-	}
-	amqp.CreateReceiver("lokean/logs", -1)
+
 	amqpReceiver := make(chan interface{})
 	amqpSender := make(chan interface{})
 	amqp.Start(amqpReceiver, amqpSender)
