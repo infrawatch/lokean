@@ -25,7 +25,7 @@ var severityArray = [...]string{
 type Log struct {
 	Msg             string        `json:"msg"`
 	Rawmsg          string        `json:"rawmsg"`
-	Timereported    time.Time        `json:"timereported"`
+	Timereported    time.Time     `json:"timereported"`
 	Hostname        string        `json:"hostname"`
 	Syslogtag       string        `json:"syslogtag"`
 	Inputname       string        `json:"inputname"`
@@ -34,7 +34,7 @@ type Log struct {
 	Pri             string        `json:"pri"`
 	Syslogfacility  string        `json:"syslogfacility"`
 	Syslogseverity  string        `json:"syslogseverity"`
-	Timegenerated   time.Time        `json:"timegenerated"`
+	Timegenerated   time.Time     `json:"timegenerated"`
 	Programname     string        `json:"programname"`
 	ProtocolVersion string        `json:"protocol-version"`
 	StructuredData  interface{}   `json:"structured-data"`
@@ -69,9 +69,8 @@ type Log struct {
 }
 
 func createLokiLog(rawMessage interface{}, logger *logging.Logger) (connector.LokiLog, error) {
-	switch msg := rawMessage.(type) {
-	case connector.AMQP10Message:
-		message := msg.Body
+	switch message := rawMessage.(type) {
+	case string:
 		logger.Debug("Received the folowing log message:")
 		logger.Debug(message)
 		var log Log

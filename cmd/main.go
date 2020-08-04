@@ -39,11 +39,8 @@ func getConfigMetadata() map[string][]config.Parameter {
 			config.Parameter{Name: "logFile", Tag: "", Default: "/dev/stderr", Validators: []config.Validator{}},
 			config.Parameter{Name: "logLevel", Tag: "", Default: "INFO", Validators: []config.Validator{config.StringOptionsValidatorFactory([]string{"DEBUG", "INFO", "WARNING", "ERROR"})}},
 		},
-		"amqp1": []config.Parameter{
-			config.Parameter{Name: "connection", Tag: "", Default: "amqp://localhost:5672/lokean/logs", Validators: []config.Validator{}},
-			config.Parameter{Name: "send_timeout", Tag: "", Default: 2, Validators: []config.Validator{config.IntValidatorFactory()}},
-			config.Parameter{Name: "client_name", Tag: "", Default: "test", Validators: []config.Validator{}},
-			config.Parameter{Name: "listen_channels", Tag: "", Default: "lokean/logs", Validators: []config.Validator{}},
+		"socket": []config.Parameter{
+			config.Parameter{Name: "in_address", Tag: "", Default: "/tmp/lokean", Validators: []config.Validator{}},
 		},
 		"loki": []config.Parameter{
 			config.Parameter{Name: "connection", Tag: "", Default: "http://localhost:3100", Validators: []config.Validator{}},
@@ -112,18 +109,18 @@ func main() {
 	var wait sync.WaitGroup
 	system.SpawnSignalHandler(finish, logger, os.Interrupt)
 
-	amqp, err := connector.ConnectAMQP10(conf, logger)
+	socket, err := connector.ConnectUnixSocket(conf, logger)
 	if err != nil {
 		logger.Metadata(map[string]interface{}{
 			"error": err,
 		})
-		logger.Error("Couldn't connect to AMQP")
+		logger.Error("Couldn't connect to socket")
 		os.Exit(1)
 	}
 
-	amqpReceiver := make(chan interface{})
-	amqpSender := make(chan interface{})
-	amqp.Start(amqpReceiver, amqpSender)
+	socketReceiver := make(chan interface{})
+	socketSender := make(chan interface{})
+	socket.Start(socketReceiver, socketSender)
 
 	loki, err := connector.ConnectLoki(conf, logger)
 	if err != nil {
@@ -139,9 +136,9 @@ func main() {
 	loki.Start(lokiReceiver, lokiSender)
 
 	defer loki.Disconnect()
-	defer amqp.Disconnect()
+	defer socket.Disconnect()
 
-	logs.Run(amqpReceiver, lokiSender, logger, finish, &wait)
+	logs.Run(socketReceiver, lokiSender, logger, finish, &wait)
 
 	wait.Wait()
 }
