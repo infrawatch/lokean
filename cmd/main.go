@@ -130,7 +130,7 @@ func main() {
 	var wait sync.WaitGroup
 	spawnSignalHandler(finish, logger, os.Interrupt)
 
-	amqp, err := connector.NewAMQP10Connector(conf, logger)
+	amqp, err := connector.ConnectAMQP10(conf, logger)
 	if err != nil {
 		logger.Metadata(map[string]interface{}{
 			"error": err,
@@ -143,7 +143,7 @@ func main() {
 	amqpSender := make(chan interface{})
 	amqp.Start(amqpReceiver, amqpSender)
 
-	loki, err := connector.NewLokiConnector(conf, logger)
+	loki, err := connector.ConnectLoki(conf, logger)
 	if err != nil {
 		logger.Metadata(map[string]interface{}{
 			"error": err,
