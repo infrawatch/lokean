@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/signal"
 	"sync"
 
 	"github.com/infrawatch/lokean/pkg/logs"
@@ -12,29 +11,12 @@ import (
 	"github.com/infrawatch/apputils/config"
 	"github.com/infrawatch/apputils/connector"
 	"github.com/infrawatch/apputils/logging"
+	"github.com/infrawatch/apputils/system"
 )
 
 func printUsage() {
 	fmt.Fprintln(os.Stderr, `Required command line argument missing`)
 	flag.PrintDefaults()
-}
-
-//spawnSignalHandler spawns goroutine which will wait for interruption signal(s)
-// and end lokean in case any of the signal is received
-func spawnSignalHandler(finish chan bool, logger *logging.Logger, watchedSignals ...os.Signal) {
-	interruptChannel := make(chan os.Signal, 1)
-	signal.Notify(interruptChannel, watchedSignals...)
-	go func() {
-	signalLoop:
-		for sig := range interruptChannel {
-			logger.Metadata(map[string]interface{}{
-				"signal": sig,
-			})
-			logger.Error("Stopping execution on caught signal")
-			close(finish)
-			break signalLoop
-		}
-	}()
 }
 
 func parseLogLevel(s string) (logging.LogLevel, error) {
@@ -128,7 +110,7 @@ func main() {
 
 	finish := make(chan bool)
 	var wait sync.WaitGroup
-	spawnSignalHandler(finish, logger, os.Interrupt)
+	system.SpawnSignalHandler(finish, logger, os.Interrupt)
 
 	amqp, err := connector.ConnectAMQP10(conf, logger)
 	if err != nil {
