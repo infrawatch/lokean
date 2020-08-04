@@ -1,40 +1,22 @@
 package main
 
 import (
-	"os"
-	"fmt"
 	"flag"
-	"os/signal"
+	"fmt"
+	"os"
 	"sync"
 
 	"github.com/infrawatch/lokean/pkg/logs"
 
+	"github.com/infrawatch/apputils/config"
 	"github.com/infrawatch/apputils/connector"
 	"github.com/infrawatch/apputils/logging"
-	"github.com/infrawatch/apputils/config"
+	"github.com/infrawatch/apputils/system"
 )
 
 func printUsage() {
 	fmt.Fprintln(os.Stderr, `Required command line argument missing`)
 	flag.PrintDefaults()
-}
-
-//spawnSignalHandler spawns goroutine which will wait for interruption signal(s)
-// and end lokean in case any of the signal is received
-func spawnSignalHandler(finish chan bool, logger *logging.Logger, watchedSignals ...os.Signal) {
-	interruptChannel := make(chan os.Signal, 1)
-	signal.Notify(interruptChannel, watchedSignals...)
-	go func() {
-	signalLoop:
-		for sig := range interruptChannel {
-			logger.Metadata(map[string]interface{}{
-				"signal": sig,
-			})
-			logger.Error("Stopping execution on caught signal")
-			close(finish)
-			break signalLoop
-		}
-	}()
 }
 
 func parseLogLevel(s string) (logging.LogLevel, error) {
@@ -98,7 +80,7 @@ func main() {
 	if err != nil {
 		logger.Metadata(map[string]interface{}{
 			"error": err,
-			"file": *fConfigLocation,
+			"file":  *fConfigLocation,
 		})
 		logger.Error("Failed to parse the config file")
 		os.Exit(1)
@@ -109,7 +91,7 @@ func main() {
 	logLevel, err := parseLogLevel(logLevelString)
 	if err != nil {
 		logger.Metadata(map[string]interface{}{
-			"error": err,
+			"error":    err,
 			"logLevel": logLevelString,
 		})
 		logger.Error("Failed to parse log level from config file")
@@ -119,39 +101,31 @@ func main() {
 	err = logger.SetFile(logFile, 0666)
 	if err != nil {
 		logger.Metadata(map[string]interface{}{
-			"error": err,
+			"error":   err,
 			"logFile": logFile,
 		})
-		logger.Error("Failed to set proper log ifle")
+		logger.Error("Failed to set proper log file")
 		os.Exit(1)
 	}
 
 	finish := make(chan bool)
 	var wait sync.WaitGroup
-	spawnSignalHandler(finish, logger, os.Interrupt)
+	system.SpawnSignalHandler(finish, logger, os.Interrupt)
 
-	amqp, err := connector.NewAMQP10Connector(conf, logger)
+	amqp, err := connector.ConnectAMQP10(conf, logger)
 	if err != nil {
 		logger.Metadata(map[string]interface{}{
 			"error": err,
 		})
 		logger.Error("Couldn't connect to AMQP")
-		return
+		os.Exit(1)
 	}
-	err = amqp.Connect()
-	if err != nil {
-		logger.Metadata(map[string]interface{}{
-			"error": err,
-		})
-		logger.Error("Error while connecting to AMQP")
-		return
-	}
-	amqp.CreateReceiver("lokean/logs", -1)
+
 	amqpReceiver := make(chan interface{})
 	amqpSender := make(chan interface{})
 	amqp.Start(amqpReceiver, amqpSender)
 
-	loki, err := connector.NewLokiConnector(conf, logger)
+	loki, err := connector.ConnectLoki(conf, logger)
 	if err != nil {
 		logger.Metadata(map[string]interface{}{
 			"error": err,
@@ -159,14 +133,7 @@ func main() {
 		logger.Error("Couldn't connect to Loki")
 		return
 	}
-	err = loki.Connect()
-	if err != nil {
-		logger.Metadata(map[string]interface{}{
-			"error": err,
-		})
-		logger.Error("Couldn't connect to Loki")
-		return
-	}
+
 	lokiReceiver := make(chan interface{})
 	lokiSender := make(chan interface{})
 	loki.Start(lokiReceiver, lokiSender)
