@@ -133,14 +133,7 @@ func main() {
 		logger.Error("Couldn't connect to Loki")
 		return
 	}
-	err = loki.Connect()
-	if err != nil {
-		logger.Metadata(map[string]interface{}{
-			"error": err,
-		})
-		logger.Error("Couldn't connect to Loki")
-		return
-	}
+
 	lokiReceiver := make(chan interface{})
 	lokiSender := make(chan interface{})
 	loki.Start(lokiReceiver, lokiSender)
