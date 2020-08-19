@@ -6,12 +6,12 @@ import (
 	"os"
 	"sync"
 
-	"github.com/infrawatch/lokean/pkg/logs"
-
 	"github.com/infrawatch/apputils/config"
 	"github.com/infrawatch/apputils/connector"
 	"github.com/infrawatch/apputils/logging"
 	"github.com/infrawatch/apputils/system"
+
+	"github.com/infrawatch/lokean/pkg/sources"
 )
 
 func printUsage() {
@@ -38,6 +38,14 @@ func getConfigMetadata() map[string][]config.Parameter {
 		"default": []config.Parameter{
 			config.Parameter{Name: "logFile", Tag: "", Default: "/dev/stderr", Validators: []config.Validator{}},
 			config.Parameter{Name: "logLevel", Tag: "", Default: "INFO", Validators: []config.Validator{config.StringOptionsValidatorFactory([]string{"DEBUG", "INFO", "WARNING", "ERROR"})}},
+			config.Parameter{Name: "message_transport", Tag: "", Default: "amqp1", Validators: []config.Validator{config.StringOptionsValidatorFactory([]string{"amqp1", "socket"})}},
+		},
+		"amqp1": []config.Parameter{
+			config.Parameter{Name: "connection", Tag: "", Default: "amqp://localhost:5672", Validators: []config.Validator{}},
+			config.Parameter{Name: "send_timeout", Tag: "", Default: 2, Validators: []config.Validator{config.IntValidatorFactory()}},
+			config.Parameter{Name: "client_name", Tag: "", Default: "test", Validators: []config.Validator{}},
+			config.Parameter{Name: "listen_channels", Tag: "", Default: "lokean/logs:rsyslog", Validators: []config.Validator{}},
+			config.Parameter{Name: "listen_prefetch", Tag: "", Default: -1, Validators: []config.Validator{config.IntValidatorFactory()}},
 		},
 		"socket": []config.Parameter{
 			config.Parameter{Name: "in_address", Tag: "", Default: "/tmp/lokean", Validators: []config.Validator{}},
@@ -109,18 +117,37 @@ func main() {
 	var wait sync.WaitGroup
 	system.SpawnSignalHandler(finish, logger, os.Interrupt)
 
-	socket, err := connector.ConnectUnixSocket(conf, logger)
+	transportOpt, err := conf.GetOption("default/message_transport")
 	if err != nil {
 		logger.Metadata(map[string]interface{}{
 			"error": err,
 		})
-		logger.Error("Couldn't connect to socket")
+		logger.Error("Failed to get message transport option")
 		os.Exit(1)
 	}
-
-	socketReceiver := make(chan interface{})
-	socketSender := make(chan interface{})
-	socket.Start(socketReceiver, socketSender)
+	transportReceiver := make(chan interface{})
+	transportSender := make(chan interface{})
+	transport := transportOpt.GetString()
+	switch transport {
+	case "socket":
+		socket, err := connector.ConnectUnixSocket(conf, logger)
+		if err != nil {
+			logger.Metadata(map[string]interface{}{"error": err})
+			logger.Error("Couldn't connect to socket")
+			os.Exit(1)
+		}
+		socket.Start(transportReceiver, transportSender)
+		defer socket.Disconnect()
+	case "amqp1":
+		amqp, err := connector.ConnectAMQP10(conf, logger)
+		if err != nil {
+			logger.Metadata(map[string]interface{}{"error": err})
+			logger.Error("Couldn't connect to AMQP")
+			os.Exit(1)
+		}
+		amqp.Start(transportReceiver, transportSender)
+		defer amqp.Disconnect()
+	}
 
 	loki, err := connector.ConnectLoki(conf, logger)
 	if err != nil {
@@ -130,15 +157,12 @@ func main() {
 		logger.Error("Couldn't connect to Loki")
 		return
 	}
-
 	lokiReceiver := make(chan interface{})
 	lokiSender := make(chan interface{})
 	loki.Start(lokiReceiver, lokiSender)
-
 	defer loki.Disconnect()
-	defer socket.Disconnect()
 
-	logs.Run(socketReceiver, lokiSender, logger, finish, &wait)
+	sources.Run(transportReceiver, lokiSender, logger, finish, &wait)
 
 	wait.Wait()
 }
