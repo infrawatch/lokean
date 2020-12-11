@@ -1,0 +1,21 @@
+name: CI
+env:
+  COVERALLS_TOKEN: ${{ secrets.COVERALLS_TOKEN }}
+on: push
+
+jobs:
+  test-framework:
+    name: Base testing
+    runs-on: ubuntu-20.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Verify image builds
+        run: |
+          docker build --tag infrawatch/lokean:latest .
+
+      - name: List images
+        run: |
+          docker images
